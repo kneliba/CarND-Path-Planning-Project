@@ -114,9 +114,10 @@ int main()
                       }
 
                       bool too_close = false; // True if too close to a car in front
+
                       bool car_ahead = false;
                       bool car_left = false;
-                      bool car_righ = false;
+                      bool car_right = false;
 
                       // Find ref_v to use
                       for (int i = 0; i < sensor_fusion.size(); i++)
@@ -124,24 +125,27 @@ int main()
                         // Check if the car is in the same lane as the ego vehicle
                         float d = sensor_fusion[i][6];
                         // if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2))
-                        // {
 
-                        int car_lane = -1;
-                        // is it on the same lane we are
+                        int check_car_lane = -1;
+                        // check what lane the detected car is in
                         if (d > 0 && d < 4)
                         {
-                          car_lane = 0;
+                          // left lane
+                          check_car_lane = 0;
                         }
                         else if (d > 4 && d < 8)
                         {
-                          car_lane = 1;
+                          // middle lane
+                          check_car_lane = 1;
                         }
                         else if (d > 8 && d < 12)
                         {
-                          car_lane = 2;
+                          // right lane
+                          check_car_lane = 2;
                         }
-                        if (car_lane < 0)
+                        if (check_car_lane < 0)
                         {
+                          // skip
                           continue;
                         }
 
@@ -159,56 +163,51 @@ int main()
                           too_close = true;
                         }
 
-                        if (car_lane == lane)
+                        if (check_car_lane == lane)
                         {
                           // Car in our lane.
-                          car_ahead |= check_car_s > car_s && check_car_s - car_s < 30;
+                          // car_ahead is true if check_car is within 30 meters in front
+                          car_ahead |= check_car_s > car_s && (check_car_s - car_s) < 30;
                         }
-                        else if (car_lane - lane == -1)
+                        else if (check_car_lane - lane == -1)
                         {
-                          // Car left
-                          car_left |= car_s - 30 < check_car_s && car_s + 30 > check_car_s;
+                          // Car is to the left
+                          // check if it is 30 meters ahead or behind us
+                          bool thirty_ahead = car_s - 30 < check_car_s;
+                          bool thirty_behind = car_s + 30 > check_car_s;
+                          car_left |= thirty_ahead && thirty_behind;
                         }
-                        else if (car_lane - lane == 1)
+                        else if (check_car_lane - lane == 1)
                         {
-                          // Car right
-                          car_righ |= car_s - 30 < check_car_s && car_s + 30 > check_car_s;
+                          // Car is to the right
+                          // check if it is 30 meters ahead or behind us
+                          bool thirty_ahead = car_s - 30 < check_car_s;
+                          bool thirty_behind = car_s + 30 > check_car_s;
+                          car_right |= thirty_ahead && thirty_behind;
                         }
                       }
 
-                      double speed_diff = 0;
-                      const double MAX_SPEED = 49.5;
-                      const double MAX_ACC = .224;
+                      double speed_change = 0;
                       if (car_ahead)
                       { // Car ahead
                         if (!car_left && lane > 0)
                         {
                           // if there is no car left and there is a left lane.
-                          lane--; // Change lane left.
+                          lane -= 1; // Change lane left.
                         }
-                        else if (!car_righ && lane != 2)
+                        else if (!car_right && lane != 2)
                         {
                           // if there is no car right and there is a right lane.
-                          lane++; // Change lane right.
+                          lane += 1; // Change lane right.
                         }
                         else
                         {
-                          speed_diff -= MAX_ACC;
+                          speed_change -= .224;
                         }
                       }
-                      else
+                      else if (ref_vel < 49.5)
                       {
-                        if (lane != 1)
-                        { // if we are not on the center lane.
-                          if ((lane == 0 && !car_righ) || (lane == 2 && !car_left))
-                          {
-                            lane = 1; // Back to center.
-                          }
-                        }
-                        if (ref_vel < MAX_SPEED)
-                        {
-                          speed_diff += MAX_ACC;
-                        }
+                        speed_change += .224;
                       }
 
                       // Create a list of evenly spaced waypoints 30m apart
@@ -290,14 +289,14 @@ int main()
                       // Fill up the rest of path planner after filling it with previous points, will always output 50 points
                       for (int i = 1; i <= 50 - previous_path_x.size(); i++)
                       {
-                        ref_vel += speed_diff;
-                        if (ref_vel > MAX_SPEED)
+                        ref_vel += speed_change;
+                        if (ref_vel > 49.5)
                         {
-                          ref_vel = MAX_SPEED;
+                          ref_vel = 49.5;
                         }
-                        else if (ref_vel < MAX_ACC)
+                        else if (ref_vel < .224)
                         {
-                          ref_vel = MAX_ACC;
+                          ref_vel = .224;
                         }
                         double N = (target_dist / (0.02 * ref_vel / 2.24));
                         double x_point = x_add_on + target_x / N;
