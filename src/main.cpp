@@ -114,27 +114,100 @@ int main()
                       }
 
                       bool too_close = false; // True if too close to a car in front
+                      bool car_ahead = false;
+                      bool car_left = false;
+                      bool car_righ = false;
 
                       // Find ref_v to use
                       for (int i = 0; i < sensor_fusion.size(); i++)
                       {
                         // Check if the car is in the same lane as the ego vehicle
                         float d = sensor_fusion[i][6];
-                        if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2))
-                        {
-                          double vx = sensor_fusion[i][3];
-                          double vy = sensor_fusion[i][4];
-                          double check_speed = sqrt(vx * vx + vy * vy);
-                          double check_car_s = sensor_fusion[i][5];
+                        // if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2))
+                        // {
 
-                          // Calculate the check_car's future location
-                          check_car_s += (double)prev_size * 0.02 * check_speed;
-                          // If the check_car is within 30 meters in front, reduce ref_vel so that we don't hit it
-                          if (check_car_s > car_s && (check_car_s - car_s) < 30)
+                        int car_lane = -1;
+                        // is it on the same lane we are
+                        if (d > 0 && d < 4)
+                        {
+                          car_lane = 0;
+                        }
+                        else if (d > 4 && d < 8)
+                        {
+                          car_lane = 1;
+                        }
+                        else if (d > 8 && d < 12)
+                        {
+                          car_lane = 2;
+                        }
+                        if (car_lane < 0)
+                        {
+                          continue;
+                        }
+
+                        double vx = sensor_fusion[i][3];
+                        double vy = sensor_fusion[i][4];
+                        double check_speed = sqrt(vx * vx + vy * vy);
+                        double check_car_s = sensor_fusion[i][5];
+
+                        // Calculate the check_car's future location
+                        check_car_s += (double)prev_size * 0.02 * check_speed;
+                        // If the check_car is within 30 meters in front, reduce ref_vel so that we don't hit it
+                        if (check_car_s > car_s && (check_car_s - car_s) < 30)
+                        {
+                          // ref_vel = 29.5;
+                          too_close = true;
+                        }
+
+                        if (car_lane == lane)
+                        {
+                          // Car in our lane.
+                          car_ahead |= check_car_s > car_s && check_car_s - car_s < 30;
+                        }
+                        else if (car_lane - lane == -1)
+                        {
+                          // Car left
+                          car_left |= car_s - 30 < check_car_s && car_s + 30 > check_car_s;
+                        }
+                        else if (car_lane - lane == 1)
+                        {
+                          // Car right
+                          car_righ |= car_s - 30 < check_car_s && car_s + 30 > check_car_s;
+                        }
+                      }
+
+                      double speed_diff = 0;
+                      const double MAX_SPEED = 49.5;
+                      const double MAX_ACC = .224;
+                      if (car_ahead)
+                      { // Car ahead
+                        if (!car_left && lane > 0)
+                        {
+                          // if there is no car left and there is a left lane.
+                          lane--; // Change lane left.
+                        }
+                        else if (!car_righ && lane != 2)
+                        {
+                          // if there is no car right and there is a right lane.
+                          lane++; // Change lane right.
+                        }
+                        else
+                        {
+                          speed_diff -= MAX_ACC;
+                        }
+                      }
+                      else
+                      {
+                        if (lane != 1)
+                        { // if we are not on the center lane.
+                          if ((lane == 0 && !car_righ) || (lane == 2 && !car_left))
                           {
-                            // ref_vel = 29.5;
-                            too_close = true;
+                            lane = 1; // Back to center.
                           }
+                        }
+                        if (ref_vel < MAX_SPEED)
+                        {
+                          speed_diff += MAX_ACC;
                         }
                       }
 
@@ -217,14 +290,14 @@ int main()
                       // Fill up the rest of path planner after filling it with previous points, will always output 50 points
                       for (int i = 1; i <= 50 - previous_path_x.size(); i++)
                       {
-                        // Reduce speed if too close, add if no longer close
-                        if (too_close)
+                        ref_vel += speed_diff;
+                        if (ref_vel > MAX_SPEED)
                         {
-                          ref_vel -= .224;
+                          ref_vel = MAX_SPEED;
                         }
-                        else if (ref_vel < 49.5)
+                        else if (ref_vel < MAX_ACC)
                         {
-                          ref_vel += .224;
+                          ref_vel = MAX_ACC;
                         }
                         double N = (target_dist / (0.02 * ref_vel / 2.24));
                         double x_point = x_add_on + target_x / N;
