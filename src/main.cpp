@@ -115,9 +115,9 @@ int main()
 
                       bool too_close = false; // True if too close to a car in front
 
-                      bool car_ahead = false;
-                      bool car_left = false;
-                      bool car_right = false;
+                      bool car_infront = false;
+                      bool car_to_left = false;
+                      bool car_to_right = false;
 
                       // Find ref_v to use
                       for (int i = 0; i < sensor_fusion.size(); i++)
@@ -128,20 +128,23 @@ int main()
 
                         int check_car_lane = -1;
                         // check what lane the detected car is in
-                        if (d > 0 && d < 4)
+                        // if(8 < d < 12)
+                        if (d < 12 && d > 8)
                         {
-                          // left lane
-                          check_car_lane = 0;
+                          // right lane
+                          check_car_lane = 2;
                         }
+                        // else if ( 4 < d < 8)
                         else if (d > 4 && d < 8)
                         {
                           // middle lane
                           check_car_lane = 1;
                         }
-                        else if (d > 8 && d < 12)
+                        // else if ( 0 < d < 4)
+                        else if (d < 4 && d > 0)
                         {
-                          // right lane
-                          check_car_lane = 2;
+                          // left lane
+                          check_car_lane = 0;
                         }
                         if (check_car_lane < 0)
                         {
@@ -157,54 +160,60 @@ int main()
                         // Calculate the check_car's future location
                         check_car_s += (double)prev_size * 0.02 * check_speed;
                         // If the check_car is within 30 meters in front, reduce ref_vel so that we don't hit it
-                        if (check_car_s > car_s && (check_car_s - car_s) < 30)
-                        {
-                          // ref_vel = 29.5;
-                          too_close = true;
-                        }
+                        // if (check_car_s > car_s && (check_car_s - car_s) < 30)
+                        // {
+                        //   // ref_vel = 29.5;
+                        //   too_close = true;
+                        // }
 
                         if (check_car_lane == lane)
                         {
-                          // Car in our lane.
-                          // car_ahead is true if check_car is within 30 meters in front
-                          car_ahead |= check_car_s > car_s && (check_car_s - car_s) < 30;
+                          // Car in our lane
+                          // car_infront is true if check_car is within 30 meters in front
+                          car_infront |= check_car_s > car_s && (check_car_s - car_s) < 30;
                         }
+
+                        // left of us
                         else if (check_car_lane - lane == -1)
                         {
                           // Car is to the left
                           // check if it is 30 meters ahead or behind us
                           bool thirty_ahead = car_s - 30 < check_car_s;
                           bool thirty_behind = car_s + 30 > check_car_s;
-                          car_left |= thirty_ahead && thirty_behind;
+                          car_to_left |= thirty_ahead && thirty_behind;
                         }
+
+                        // right of us
                         else if (check_car_lane - lane == 1)
                         {
                           // Car is to the right
                           // check if it is 30 meters ahead or behind us
                           bool thirty_ahead = car_s - 30 < check_car_s;
                           bool thirty_behind = car_s + 30 > check_car_s;
-                          car_right |= thirty_ahead && thirty_behind;
+                          car_to_right |= thirty_ahead && thirty_behind;
                         }
                       }
 
                       double speed_change = 0;
-                      if (car_ahead)
+                      if (car_infront)
                       { // Car ahead
-                        if (!car_left && lane > 0)
+                        // check if the lane right to us is free
+                        if (!car_to_right && lane != 2)
                         {
-                          // if there is no car left and there is a left lane.
-                          lane -= 1; // Change lane left.
+                          lane += 1; // move car to right lane
                         }
-                        else if (!car_right && lane != 2)
+                        // check if the lane left to us is free
+                        else if (!car_to_left && lane > 0)
                         {
-                          // if there is no car right and there is a right lane.
-                          lane += 1; // Change lane right.
+                          lane -= 1; // move car to left lane
                         }
                         else
                         {
+                          // slow down
                           speed_change -= .224;
                         }
                       }
+                      // check speed, accel if not at max speed
                       else if (ref_vel < 49.5)
                       {
                         speed_change += .224;
